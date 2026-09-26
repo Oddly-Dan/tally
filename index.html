@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Voice Tally: set a start, a target and a step, and your browser counts every number out loud.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#12151a">
+<title>Voice Tally — count out loud</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2312151a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-weight='700' font-size='20' text-anchor='middle' fill='%23f2a93b'%3E1%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+
+  :root{
+    --bg: #12151a;
+    --panel: #1b2027;
+    --panel-edge: #262d36;
+    --recess: #0a0c0f;
+    --amber: #f2a93b;
+    --amber-dim: #8a611f;
+    --teal: #52d1c0;
+    --text: #e7e4dc;
+    --muted: #7c8591;
+    --danger: #e2574c;
+  }
+
+  *{ box-sizing: border-box; }
+
+  body{
+    margin:0;
+    min-height:100vh;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #1a2029 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    display:flex;
+    justify-content:center;
+    padding: 40px 16px 60px;
+  }
+
+  .sheet{
+    width:100%;
+    max-width: 640px;
+  }
+
+  .eyebrow{
+    font-family:'Space Mono', monospace;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    font-size: 12px;
+    color: var(--amber);
+    margin: 0 0 6px;
+  }
+
+  h1{
+    font-family:'IBM Plex Sans', sans-serif;
+    font-weight:600;
+    font-size: clamp(26px, 5vw, 36px);
+    margin: 0 0 6px;
+  }
+
+  .sub{
+    color: var(--muted);
+    font-size: 14px;
+    margin: 0 0 28px;
+    max-width: 46ch;
+    line-height:1.5;
+  }
+
+  .panel{
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 16px;
+    padding: 22px;
+    margin-bottom: 18px;
+  }
+
+  /* --- odometer --- */
+  .odo-frame{
+    background: var(--recess);
+    border-radius: 10px;
+    padding: 18px 14px;
+    overflow-x: auto;
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.7), inset 0 0 0 1px #000;
+    position:relative;
+  }
+  .odo-frame::after{
+    content:'';
+    position:absolute; inset:0;
+    background: repeating-linear-gradient(
+      to bottom, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px,
+      transparent 1px, transparent 3px
+    );
+    pointer-events:none;
+    border-radius: 10px;
+  }
+  #odometer{
+    display:flex;
+    justify-content:center;
+    gap: 2px;
+    font-family:'Space Mono', monospace;
+    font-weight:700;
+    font-size: clamp(28px, 7vw, 48px);
+    color: var(--amber);
+    text-shadow: 0 0 14px rgba(242,169,59,0.45);
+    white-space:nowrap;
+    min-width:min-content;
+    width:100%;
+  }
+  #odometer span{
+    display:inline-block;
+    min-width:0.62em;
+    text-align:center;
+  }
+  #odometer span.sep{
+    color: var(--amber-dim);
+    min-width: 0.3em;
+  }
+  @keyframes tick{
+    0%{ transform: translateY(-40%); opacity:0.3; }
+    100%{ transform: translateY(0); opacity:1; }
+  }
+  #odometer span.tick{ animation: tick 0.16s ease-out; }
+  @media (prefers-reduced-motion: reduce){
+    #odometer span.tick{ animation:none; }
+  }
+
+  .odo-meta{
+    display:flex;
+    justify-content:space-between;
+    font-size:12px;
+    color: var(--muted);
+    margin-top:10px;
+    font-family:'Space Mono', monospace;
+  }
+
+  .progress-track{
+    height:6px;
+    background: var(--recess);
+    border-radius: 4px;
+    margin-top:14px;
+    overflow:hidden;
+  }
+  .progress-fill{
+    height:100%;
+    width:0%;
+    background: linear-gradient(90deg, var(--amber-dim), var(--teal));
+    transition: width 0.2s linear;
+  }
+
+  .status{
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--teal);
+    font-family:'Space Mono', monospace;
+    min-height: 18px;
+  }
+  .status.idle{ color: var(--muted); }
+  .status.err{ color: var(--danger); }
+
+  /* --- controls --- */
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+  @media (max-width: 560px){
+    .grid{ grid-template-columns: repeat(2, 1fr); }
+  }
+
+  label{
+    display:block;
+    font-size: 11px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  input[type="text"]{
+    width:100%;
+    background: var(--recess);
+    border: 1px solid var(--panel-edge);
+    border-radius: 8px;
+    padding: 10px 10px;
+    color: var(--text);
+    font-family:'Space Mono', monospace;
+    font-size: 14px;
+  }
+  input[type="text"]:focus-visible, select:focus-visible, button:focus-visible{
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+  }
+
+  .voice-row{
+    display:grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap:14px;
+    margin-top:16px;
+  }
+  @media (max-width: 560px){
+    .voice-row{ grid-template-columns: 1fr; }
+  }
+
+  select{
+    width:100%;
+    background: var(--recess);
+    border: 1px solid var(--panel-edge);
+    border-radius: 8px;
+    padding: 10px;
+    color: var(--text);
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+  }
+
+  .slider-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .slider-row span{
+    font-family:'Space Mono', monospace;
+    font-size:12px;
+    color: var(--muted);
+    width: 30px;
+  }
+  input[type="range"]{
+    flex:1;
+    accent-color: var(--amber);
+  }
+
+  .transport{
+    display:flex;
+    gap:12px;
+    margin-top: 20px;
+  }
+  button{
+    font-family:'IBM Plex Sans', sans-serif;
+    font-weight:600;
+    font-size: 14px;
+    border-radius: 10px;
+    padding: 12px 18px;
+    border: 1px solid var(--panel-edge);
+    background: var(--recess);
+    color: var(--text);
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    transition: transform 0.05s ease, border-color 0.15s ease;
+  }
+  button:active{ transform: scale(0.97); }
+  button.primary{
+    background: var(--amber);
+    color: #1a1305;
+    border-color: var(--amber);
+  }
+  button.primary:hover{ border-color:#fff; }
+  button:disabled{ opacity:0.4; cursor:not-allowed; }
+  button:hover:not(:disabled){ border-color: var(--muted); }
+
+  .hint{
+    font-size:12px;
+    color: var(--muted);
+    margin-top:16px;
+    line-height:1.5;
+  }
+
+  noscript{ color: var(--danger); }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <p class="eyebrow">Voice Tally</p>
+  <h1>Count out loud</h1>
+  <p class="sub">Set a start, a target, and a step. It'll speak every number in between — from a quick count to ten, to a count that would take longer than this tab will stay open. That's fine; just let it run.</p>
+
+  <div class="panel">
+    <div class="odo-frame">
+      <div id="odometer"><span>0</span></div>
+    </div>
+    <div class="odo-meta">
+      <span id="rangeLabel">0 → 100, step 1</span>
+      <span id="progressLabel">0.00%</span>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <p class="status idle" id="status">Idle</p>
+  </div>
+
+  <div class="panel">
+    <div class="grid">
+      <div>
+        <label for="startInput">Start at</label>
+        <input type="text" id="startInput" value="0" inputmode="numeric">
+      </div>
+      <div>
+        <label for="targetInput">Count to</label>
+        <input type="text" id="targetInput" value="100" inputmode="numeric">
+      </div>
+      <div>
+        <label for="stepInput">Step by</label>
+        <input type="text" id="stepInput" value="1" inputmode="numeric">
+      </div>
+      <div>
+        <label for="paceInput">Pace (ms)</label>
+        <input type="text" id="paceInput" value="150" inputmode="numeric">
+      </div>
+    </div>
+
+    <div class="voice-row">
+      <div>
+        <label for="voiceSelect">Voice</label>
+        <select id="voiceSelect"></select>
+      </div>
+      <div>
+        <label for="rateInput">Speed</label>
+        <div class="slider-row">
+          <input type="range" id="rateInput" min="0.5" max="2" step="0.05" value="1">
+          <span id="rateVal">1.00</span>
+        </div>
+      </div>
+      <div>
+        <label for="pitchInput">Pitch</label>
+        <div class="slider-row">
+          <input type="range" id="pitchInput" min="0" max="2" step="0.05" value="1">
+          <span id="pitchVal">1.00</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="transport">
+      <button class="primary" id="startBtn">▶ Start</button>
+      <button id="pauseBtn" disabled>❚❚ Pause</button>
+      <button id="resetBtn">■ Reset</button>
+    </div>
+
+    <p class="hint">Direction is worked out automatically from start and target, so the sign of "step by" doesn't matter. Very large counts will keep going as long as this tab stays open and awake.</p>
+    <noscript>This app needs JavaScript and a browser with speech synthesis support.</noscript>
+  </div>
+</div>
+
+<script>
+(function(){
+  const odometer = document.getElementById('odometer');
+  const rangeLabel = document.getElementById('rangeLabel');
+  const progressLabel = document.getElementById('progressLabel');
+  const progressFill = document.getElementById('progressFill');
+  const statusEl = document.getElementById('status');
+
+  const startInput = document.getElementById('startInput');
+  const targetInput = document.getElementById('targetInput');
+  const stepInput = document.getElementById('stepInput');
+  const paceInput = document.getElementById('paceInput');
+  const voiceSelect = document.getElementById('voiceSelect');
+  const rateInput = document.getElementById('rateInput');
+  const pitchInput = document.getElementById('pitchInput');
+  const rateVal = document.getElementById('rateVal');
+  const pitchVal = document.getElementById('pitchVal');
+
+  const startBtn = document.getElementById('startBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const resetBtn = document.getElementById('resetBtn');
+
+  let start = 0n, target = 100n, step = 1n, pace = 150;
+  let current = 0n;
+  let running = false, paused = false, timer = null;
+  // bumped on every start/pause/reset so callbacks from cancelled utterances are ignored
+  let generation = 0;
+  // hold a reference to the live utterance; Chrome can GC it and never fire onend
+  let currentUtterance = null;
+
+  const supported = 'speechSynthesis' in window;
+  if(!supported){
+    startBtn.disabled = true;
+    setStatus('This browser doesn\u2019t support speech synthesis.', 'err');
+  }
+
+  function parseBig(str, fallback){
+    str = (str || '').trim().replace(/[,\s_]/g, '');
+    if(str === '') return fallback;
+    if(!/^-?\d+$/.test(str)) return null;
+    try{ return BigInt(str); } catch(e){ return null; }
+  }
+
+  function groupDigits(numStr){
+    const neg = numStr.startsWith('-');
+    const digits = neg ? numStr.slice(1) : numStr;
+    let out = '';
+    for(let i=0;i<digits.length;i++){
+      if(i>0 && (digits.length - i) % 3 === 0) out += '\u0020';
+      out += digits[i];
+    }
+    return (neg ? '-' : '') + out;
+  }
+
+  function setStatus(text, cls){
+    statusEl.textContent = text;
+    statusEl.className = 'status' + (cls ? ' ' + cls : '');
+  }
+
+  function renderNumber(bigVal){
+    const grouped = groupDigits(bigVal.toString());
+    const chars = [...grouped];
+    const existing = odometer.querySelectorAll('span');
+    if(existing.length !== chars.length){
+      odometer.innerHTML = chars.map(c => `<span class="${c===' '?'sep':''}">${c===' '?'\u00A0':c}</span>`).join('');
+    } else {
+      chars.forEach((c, i) => {
+        const el = existing[i];
+        const display = c === ' ' ? '\u00A0' : c;
+        if(el.textContent !== display){
+          el.textContent = display;
+          el.classList.remove('tick');
+          void el.offsetWidth;
+          el.classList.add('tick');
+        }
+      });
+    }
+  }
+
+  function updateProgress(){
+    const range = target - start;
+    let pct = 100;
+    if(range !== 0n){
+      const done = current - start;
+      pct = Number((done * 10000n) / range) / 100;
+      if(pct > 100) pct = 100;
+      if(pct < 0) pct = 0;
+    }
+    progressFill.style.width = pct + '%';
+    progressLabel.textContent = pct.toFixed(2) + '%';
+  }
+
+  function loadVoices(){
+    const voices = speechSynthesis.getVoices();
+    const prevValue = voiceSelect.value;
+    voiceSelect.replaceChildren(...voices.map(v => new Option(`${v.name} (${v.lang})`, v.voiceURI, false, v.default)));
+    if(prevValue && voices.some(v => v.voiceURI === prevValue)) voiceSelect.value = prevValue;
+  }
+  if(supported){
+    loadVoices();
+    speechSynthesis.onvoiceschanged = loadVoices;
+  }
+
+  function getSelectedVoice(){
+    return speechSynthesis.getVoices().find(v => v.voiceURI === voiceSelect.value) || null;
+  }
+
+  rateInput.addEventListener('input', () => rateVal.textContent = parseFloat(rateInput.value).toFixed(2));
+  pitchInput.addEventListener('input', () => pitchVal.textContent = parseFloat(pitchInput.value).toFixed(2));
+
+  function setControlsDisabled(disabled){
+    [startInput, targetInput, stepInput, paceInput].forEach(el => el.disabled = disabled);
+  }
+
+  function tick(){
+    if(!running || paused) return;
+    const gen = generation;
+    renderNumber(current);
+    updateProgress();
+    setStatus('Speaking ' + current.toString());
+
+    const utter = new SpeechSynthesisUtterance(current.toString());
+    utter.rate = parseFloat(rateInput.value);
+    utter.pitch = parseFloat(pitchInput.value);
+    const voice = getSelectedVoice();
+    if(voice) utter.voice = voice;
+
+    const advance = () => {
+      if(gen !== generation || !running || paused) return;
+      const finished = step > 0n ? current >= target : current <= target;
+      if(finished){
+        finish();
+        return;
+      }
+      timer = setTimeout(() => {
+        if(gen !== generation || !running || paused) return;
+        let next = current + step;
+        if(step > 0n && next > target) next = target;
+        if(step < 0n && next < target) next = target;
+        current = next;
+        tick();
+      }, pace);
+    };
+    utter.onend = advance;
+    utter.onerror = advance;
+    currentUtterance = utter;
+    speechSynthesis.speak(utter);
+  }
+
+  function finish(){
+    generation++;
+    currentUtterance = null;
+    running = false;
+    paused = false;
+    clearTimeout(timer);
+    startBtn.disabled = false;
+    startBtn.textContent = '▶ Start';
+    pauseBtn.disabled = true;
+    pauseBtn.textContent = '❚❚ Pause';
+    setControlsDisabled(false);
+    setStatus('Done — reached ' + target.toString(), 'idle');
+  }
+
+  function doStart(){
+    const s = parseBig(startInput.value, null);
+    const t = parseBig(targetInput.value, null);
+    let stp = parseBig(stepInput.value, null);
+    const p = parseInt((paceInput.value || '').trim(), 10);
+
+    if(s === null || t === null || stp === null || stp === 0n || isNaN(p) || p < 0){
+      setStatus('Check your start, target, step and pace values.', 'err');
+      return;
+    }
+
+    start = s; target = t; pace = p;
+    // direction is inferred from start/target, sign of step input is ignored
+    const magnitude = stp < 0n ? -stp : stp;
+    step = (target >= start) ? magnitude : -magnitude;
+
+    generation++;
+    current = start;
+    running = true;
+    paused = false;
+    setControlsDisabled(true);
+    startBtn.disabled = true;
+    startBtn.textContent = '▶ Start';
+    pauseBtn.disabled = false;
+    pauseBtn.textContent = '❚❚ Pause';
+    rangeLabel.textContent = start.toString() + ' \u2192 ' + target.toString() + ', step ' + magnitude.toString();
+    renderNumber(current);
+    updateProgress();
+    tick();
+  }
+
+  function doPause(){
+    if(!running) return;
+    if(!paused){
+      paused = true;
+      generation++;
+      clearTimeout(timer);
+      speechSynthesis.cancel();
+      pauseBtn.textContent = '▶ Resume';
+      setStatus('Paused at ' + current.toString(), 'idle');
+    } else {
+      paused = false;
+      generation++;
+      pauseBtn.textContent = '❚❚ Pause';
+      tick();
+    }
+  }
+
+  function doReset(){
+    generation++;
+    currentUtterance = null;
+    running = false;
+    paused = false;
+    clearTimeout(timer);
+    if(supported) speechSynthesis.cancel();
+    setControlsDisabled(false);
+    startBtn.disabled = false;
+    startBtn.textContent = '▶ Start';
+    pauseBtn.disabled = true;
+    pauseBtn.textContent = '❚❚ Pause';
+    const s = parseBig(startInput.value, 0n) ?? 0n;
+    current = s;
+    renderNumber(current);
+    progressFill.style.width = '0%';
+    progressLabel.textContent = '0.00%';
+    setStatus('Idle', 'idle');
+  }
+
+  startBtn.addEventListener('click', doStart);
+  pauseBtn.addEventListener('click', doPause);
+  resetBtn.addEventListener('click', doReset);
+
+  renderNumber(0n);
+})();
+</script>
+</body>
+</html>
