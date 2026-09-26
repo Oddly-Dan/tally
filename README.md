@@ -14,3 +14,7 @@ Open `index.html` in a browser, or serve the folder with GitHub Pages. There is 
 
 - You need a browser with `speechSynthesis` support (current Chrome, Edge, Safari, Firefox).
 - Browsers throttle background tabs. Keep the tab in the foreground for a steady pace.
+
+## Licence
+
+[GPL-3.0](LICENSE)
